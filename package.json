@@ -25,7 +25,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "format": "prettier --write './**/*.{js,jsx,ts,tsx,css,md,json}' --config ./.prettierrc",
-    "docker:push": "make deploy IMAGE_NAME=jakobklippel/loopstack-studio"
+    "docker:push": "make deploy IMAGE_NAME=jakobklippel/loopstack-studio",
+    "test": "vitest"
   },
   "dependencies": {
     "@fontsource/roboto": "^5.2.6",
