@@ -12,6 +12,7 @@ import WorkspacePage from './pages/WorkspacePage.tsx';
 import LocalHealthCheck from './features/health/LocalHealthCheck.tsx';
 import DebugPage from './pages/DebugPage.tsx';
 import { SseProvider } from './providers/SseProvider.tsx';
+import { InvalidationEventsProvider } from './providers/InvalidationEventsProvider.tsx';
 import WorkspacesPage from './pages/WorkspacesPage.tsx';
 import WorkbenchPage from '@/pages/WorkbenchPage.tsx';
 
@@ -24,7 +25,9 @@ function AppRoot() {
         <StudioProvider router={router} environment={config.environment}>
           <LocalHealthCheck />
           <SseProvider />
-          <WorkerLayout />
+          <InvalidationEventsProvider>
+            <WorkerLayout />
+          </InvalidationEventsProvider>
         </StudioProvider>
       </AppLayout>
     </QueryProvider>

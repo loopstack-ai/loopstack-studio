@@ -1,9 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
 import { useApiClient } from './useApi.ts';
 import type { WorkflowItemDto, WorkflowSortByDto } from '@loopstack/api-client';
-import { eventBus } from '../services';
-import { SseClientEvents } from '../events';
 
 export function useWorkflow(id: string) {
   const { envKey, api } = useApiClient();
@@ -96,55 +93,4 @@ export function useDeleteWorkflow() {
       });
     }
   });
-}
-
-export function useWorkflowsInvalidationEvents(workerId: string | undefined) {
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    if (workerId) {
-      const unsubWorkflowCreatedSubscriber = eventBus.on(
-        SseClientEvents.WORKFLOW_CREATED,
-        (payload: any) => {
-          if (payload.namespaceId) {
-            queryClient.invalidateQueries({
-              queryKey: ['workflows', payload.namespaceId, workerId]
-            });
-            queryClient.invalidateQueries({
-              queryKey: ['namespaces', payload.pipelineId, workerId]
-            });
-            queryClient.invalidateQueries({
-              queryKey: ['workflows', payload.namespaceId, workerId]
-            });
-          }
-
-          if (payload.pipelineId) {
-            queryClient.invalidateQueries({
-              queryKey: ['workflows-by-pipeline', payload.pipelineId, workerId]
-            });
-          }
-        }
-      );
-
-      const unsubWorkflowUpdatedSubscriber = eventBus.on(
-        SseClientEvents.WORKFLOW_UPDATED,
-        (payload: any) => {
-          if (payload.id) {
-            queryClient.invalidateQueries({ queryKey: ['workflow', payload.id, workerId] });
-            queryClient.invalidateQueries({
-              queryKey: ['namespaces', payload.pipelineId, workerId]
-            });
-            queryClient.invalidateQueries({
-              queryKey: ['workflows', payload.namespaceId, workerId]
-            });
-          }
-        }
-      );
-
-      return () => {
-        unsubWorkflowCreatedSubscriber();
-        unsubWorkflowUpdatedSubscriber();
-      };
-    }
-  }, [queryClient]);
 }
