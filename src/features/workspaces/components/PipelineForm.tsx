@@ -1,12 +1,25 @@
-import { useEffect, useState } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Play, RefreshCw } from 'lucide-react';
-import ErrorSnackbar from '../../../components/snackbars/ErrorSnackbar.tsx';
-import { useCreatePipeline } from '../../../hooks/usePipelines.ts';
-import { useRunPipeline } from '../../../hooks/useProcessor.ts';
-import { usePipelineConfig } from '../../../hooks/useConfig.ts';
-import type { PipelineConfigDto, WorkspaceDto } from '@loopstack/api-client';
+import ErrorSnackbar from '@/components/snackbars/ErrorSnackbar';
 import { adjectives, colors, uniqueNamesGenerator } from 'unique-names-generator';
-import { useStudio } from '../../../providers/StudioProvider.tsx';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Accordion, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { AccordionContent } from '@radix-ui/react-accordion';
+import { useCreatePipeline } from '@/hooks/usePipelines';
+import { usePipelineConfig } from '@/hooks/useConfig';
+import { useRunPipeline } from '@/hooks/useProcessor';
+import type { PipelineConfigDto, WorkspaceDto } from '@loopstack/api-client';
+import { useStudio } from '@/providers/StudioProvider';
+
+interface PipelineConfigDtoWithParams extends PipelineConfigDto {
+  parameters?: {
+    type?: string;
+    properties?: Record<string, any>;
+    required?: string[];
+  };
+}
 
 interface PipelineFormProps {
   title: string;
@@ -22,15 +35,47 @@ const PipelineForm = ({ title, subtitle, workspace }: PipelineFormProps) => {
   const pingPipeline = useRunPipeline();
   const fetchPipelineTypes = usePipelineConfig(workspace.configKey);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    configKey: string;
+    parameters: Record<string, any>;
+  }>({
     name: '',
-    configKey: ''
+    configKey: '',
+    parameters: {}
   });
 
   const [errors, setErrors] = useState({
     name: '',
     configKey: ''
   });
+
+  const selectedPipelineConfig: PipelineConfigDtoWithParams | undefined = useMemo(() => {
+    if (!formData.configKey || !fetchPipelineTypes.data) return undefined;
+    return fetchPipelineTypes.data.find((p) => p.configKey === formData.configKey);
+  }, [formData.configKey, fetchPipelineTypes.data]);
+
+  useEffect(() => {
+    if (selectedPipelineConfig?.parameters?.properties) {
+      const defaults: Record<string, any> = {};
+      Object.entries(selectedPipelineConfig.parameters.properties).forEach(
+        ([key, schema]: [string, any]) => {
+          if (schema.default !== undefined) {
+            defaults[key] = schema.default;
+          }
+        }
+      );
+      setFormData((prev) => ({
+        ...prev,
+        parameters: defaults
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        parameters: {}
+      }));
+    }
+  }, [selectedPipelineConfig]);
 
   useEffect(() => {
     if (!formData.configKey && fetchPipelineTypes.data?.[0]?.configKey) {
@@ -60,13 +105,19 @@ const PipelineForm = ({ title, subtitle, workspace }: PipelineFormProps) => {
       return;
     }
 
+    const pipelineData: any = {
+      configKey: formData.configKey,
+      title: formData.name ?? null,
+      workspaceId: workspace.id
+    };
+
+    if (Object.keys(formData.parameters).length > 0) {
+      pipelineData.args = formData.parameters;
+    }
+
     createPipeline.mutate(
       {
-        pipelineCreateDto: {
-          configKey: formData.configKey,
-          title: formData.name ?? null,
-          workspaceId: workspace.id
-        }
+        pipelineCreateDto: pipelineData
       },
       {
         onSuccess: (createdPipeline) => {
@@ -102,6 +153,16 @@ const PipelineForm = ({ title, subtitle, workspace }: PipelineFormProps) => {
     }
   };
 
+  const handleParameterChange = (paramName: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [paramName]: value
+      }
+    }));
+  };
+
   const setRandomName = () => {
     const shortName = uniqueNamesGenerator({
       dictionaries: [adjectives, colors],
@@ -114,6 +175,82 @@ const PipelineForm = ({ title, subtitle, workspace }: PipelineFormProps) => {
       ...prev,
       name: shortName
     }));
+  };
+
+  const renderField = (fieldName: string, fieldSchema: any) => {
+    const isRequired = selectedPipelineConfig?.parameters?.required?.includes(fieldName) || false;
+    const fieldType = fieldSchema.type || 'string';
+    const value = formData.parameters[fieldName];
+
+    return (
+      <div key={fieldName} className="space-y-2 overflow-y-auto">
+        <Label htmlFor={fieldName}>
+          {fieldSchema.title || fieldName}
+          {isRequired && <span className="text-red-500 ml-1">*</span>}
+        </Label>
+        {fieldSchema.description && (
+          <p className="text-sm text-muted-foreground">{fieldSchema.description}</p>
+        )}
+
+        {fieldType === 'boolean' ? (
+          <div className="flex items-center space-x-2">
+            <input
+              id={fieldName}
+              type="checkbox"
+              checked={value ?? false}
+              onChange={(e) => handleParameterChange(fieldName, e.target.checked)}
+              disabled={isLoading}
+              className="h-4 w-4 rounded border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <Label htmlFor={fieldName} className="font-normal cursor-pointer">
+              {fieldSchema.title || fieldName}
+            </Label>
+          </div>
+        ) : fieldType === 'number' || fieldType === 'integer' ? (
+          <Input
+            id={fieldName}
+            type="number"
+            step={fieldType === 'integer' ? '1' : 'any'}
+            min={fieldSchema.minimum}
+            max={fieldSchema.maximum}
+            value={value ?? ''}
+            onChange={(e) => {
+              const numValue =
+                fieldType === 'integer' ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
+              handleParameterChange(fieldName, isNaN(numValue) ? undefined : numValue);
+            }}
+            placeholder={fieldSchema.placeholder}
+            disabled={isLoading}
+            required={isRequired}
+          />
+        ) : fieldSchema.enum ? (
+          <select
+            id={fieldName}
+            value={value ?? ''}
+            onChange={(e) => handleParameterChange(fieldName, e.target.value)}
+            disabled={isLoading}
+            required={isRequired}
+            className="w-full px-3 py-2 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed border-input">
+            <option value="">Select {fieldSchema.title || fieldName}</option>
+            {fieldSchema.enum.map((option: string) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <Input
+            id={fieldName}
+            type="text"
+            value={value ?? ''}
+            onChange={(e) => handleParameterChange(fieldName, e.target.value)}
+            placeholder={fieldSchema.placeholder}
+            disabled={isLoading}
+            required={isRequired}
+          />
+        )}
+      </div>
+    );
   };
 
   const isLoading = createPipeline.isPending || pingPipeline.isPending;
@@ -145,65 +282,81 @@ const PipelineForm = ({ title, subtitle, workspace }: PipelineFormProps) => {
       <ErrorSnackbar error={fetchPipelineTypes.error} />
 
       <div className="space-y-6">
-        <div className="space-y-2">
-          <label htmlFor="name" className="block text-sm font-medium text-foreground">
-            Name (optional)
-          </label>
-          <div className="relative">
-            <input
-              id="name"
-              type="text"
-              value={formData.name}
-              onChange={(e) => handleInputChange('name', e.target.value)}
-              disabled={isLoading}
-              className={`w-full px-3 py-2 pr-10 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                errors.name ? 'border-red-500 focus:ring-red-500' : 'border-input'
-              }`}
-              required
-              autoFocus
-            />
-            <button
-              type="button"
-              onClick={setRandomName}
-              disabled={isLoading}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-              title="Generate new random name"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
+        <div className="max-w-lg w-full">
+          <div className="space-y-2 w-full">
+            <label htmlFor="name" className="block text-sm font-medium text-foreground">
+              Name (optional)
+            </label>
+            <div className="relative w-full">
+              <input
+                id="name"
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                disabled={isLoading}
+                className={`w-full px-3 py-2 pr-10 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  errors.name ? 'border-red-500 focus:ring-red-500' : 'border-input'
+                }`}
+                required
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={setRandomName}
+                disabled={isLoading}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                title="Generate new random name">
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+            {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name}</p>}
           </div>
-          {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name}</p>}
+
+          <div className="space-y-2">
+            <label htmlFor="automation" className="block text-sm font-medium text-foreground">
+              Automation Type
+            </label>
+            <select
+              id="automation"
+              value={formData.configKey}
+              onChange={(e) => handleInputChange('configKey', e.target.value)}
+              disabled={isLoading}
+              className={`w-full px-3 py-2 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                errors.configKey ? 'border-red-500 focus:ring-red-500' : 'border-input'
+              }`}>
+              <option value="">Select an automation</option>
+              {fetchPipelineTypes.data.map((item: PipelineConfigDto) => (
+                <option key={item.configKey} value={item.configKey}>
+                  {item.title ?? item.configKey}
+                </option>
+              ))}
+            </select>
+            {errors.configKey && <p className="text-sm text-red-500 mt-1">{errors.configKey}</p>}
+          </div>
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="automation" className="block text-sm font-medium text-foreground">
-            Automation Type
-          </label>
-          <select
-            id="automation"
-            value={formData.configKey}
-            onChange={(e) => handleInputChange('configKey', e.target.value)}
-            disabled={isLoading}
-            className={`w-full px-3 py-2 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-              errors.configKey ? 'border-red-500 focus:ring-red-500' : 'border-input'
-            }`}
-          >
-            <option value="">Select an automation</option>
-            {fetchPipelineTypes.data.map((item: PipelineConfigDto) => (
-              <option key={item.configKey} value={item.configKey}>
-                {item.title ?? item.configKey}
-              </option>
-            ))}
-          </select>
-          {errors.configKey && <p className="text-sm text-red-500 mt-1">{errors.configKey}</p>}
-        </div>
+        {selectedPipelineConfig?.parameters?.properties && (
+          <Accordion type="single" collapsible className="w-full max-w-lg">
+            <AccordionItem value="item-1">
+              <AccordionTrigger>Pipeline Parameters</AccordionTrigger>
+              <AccordionContent>
+                {Object.keys(selectedPipelineConfig.parameters.properties).length > 0 && (
+                  <div className="border-t pt-4 space-y-4">
+                    {Object.entries(selectedPipelineConfig.parameters.properties).map(
+                      ([fieldName, fieldSchema]) => renderField(fieldName, fieldSchema)
+                    )}
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
 
         <button
           type="button"
           onClick={handleSubmit}
           disabled={isLoading}
-          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2.5 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary flex items-center justify-center gap-2"
-        >
+          className="w-full  max-w-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2.5 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary flex items-center justify-center gap-2">
           {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
           {isLoading ? 'Creating...' : 'Run Now'}
         </button>
