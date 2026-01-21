@@ -122,7 +122,6 @@ export function buildWorkflowGraph(
   workflowData: WorkflowInterface | undefined,
   workflowId: string,
   configTransitions: WorkflowTransitionType[] = [],
-  animationsEnabled: boolean = true,
 ): { nodes: Node<StateNodeData>[]; edges: Edge[] } {
   let transitionsInDefinition: WorkflowTransitionType[] = [];
 
@@ -248,7 +247,6 @@ export function buildWorkflowGraph(
       isCurrent: state === currentPlace,
       isVisited: visitedStates.has(state),
       visitCount: stateVisitCount.get(state) ?? 0,
-      animationsEnabled,
     },
   }));
 
@@ -275,7 +273,7 @@ export function buildWorkflowGraph(
       source: `${workflowId}-${t.from}`,
       target: `${workflowId}-${t.to}`,
       type: 'smoothstep',
-      animated: isExecuted && animationsEnabled,
+      animated: false,
       label: edgeLabel,
       style: {
         strokeWidth: isExecuted ? 2.5 : 1.5,

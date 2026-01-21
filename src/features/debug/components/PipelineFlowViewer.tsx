@@ -25,15 +25,9 @@ interface PipelineFlowViewerProps {
   pipelineId: string;
   workflows: WorkflowItemDto[];
   pipelineConfig?: PipelineConfigDto;
-  animationsEnabled: boolean;
 }
 
-const PipelineFlowViewer: React.FC<PipelineFlowViewerProps> = ({
-  pipelineId,
-  workflows,
-  pipelineConfig,
-  animationsEnabled,
-}) => {
+const PipelineFlowViewer: React.FC<PipelineFlowViewerProps> = ({ pipelineId, workflows, pipelineConfig }) => {
   const { data: pipeline } = usePipeline(pipelineId);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<StateNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -105,7 +99,6 @@ const PipelineFlowViewer: React.FC<PipelineFlowViewerProps> = ({
             pipelineConfig={pipelineConfig}
             onGraphReady={handleGraphReady}
             onLoadingChange={handleLoadingChange}
-            animationsEnabled={animationsEnabled}
           />
         ))}
 
